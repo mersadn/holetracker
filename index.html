@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>دفتر ثبت سوراخ‌ها</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#B5502E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="سوراخ‌ها">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -249,6 +257,64 @@
     color:var(--ink);
   }
 
+  .map-panel{
+    background:#585349;
+    border:1.5px solid var(--line-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding:20px;
+    margin-bottom:26px;
+  }
+  .map-panel .map-title{
+    color:#fff;
+    font-size:14px;
+    font-weight:700;
+    margin-bottom:12px;
+    text-align:center;
+  }
+  .map-legend{
+    display:flex;
+    justify-content:center;
+    gap:22px;
+    margin-top:14px;
+    flex-wrap:wrap;
+  }
+  .map-legend .item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:13px;
+    color:#fff;
+    font-weight:600;
+  }
+  .map-legend .dot{
+    width:16px;height:16px;
+    border-radius:50%;
+    border:1.5px solid #fff;
+    display:inline-block;
+  }
+  .map-svg-wrap{
+    max-width:420px;
+    margin:0 auto;
+  }
+  .hole-circle{
+    stroke:#fff;
+    stroke-width:2.5;
+    cursor:pointer;
+    transition: fill .15s ease, opacity .15s ease;
+  }
+  .hole-circle:hover{ opacity:0.82; }
+  .hole-circle-text{
+    fill:#fff;
+    font-family:'Vazirmatn', Tahoma, sans-serif;
+    font-size:16px;
+    font-weight:700;
+    text-anchor:middle;
+    dominant-baseline:middle;
+    pointer-events:none;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* ---------- Table ---------- */
   .table-panel{
     overflow:hidden;
@@ -366,6 +432,17 @@
     </div>
   </header>
 
+  <div class="map-panel" id="mapPanel">
+    <div class="map-title">نقشهٔ سوراخ‌ها — روی هر سوراخ کلیک کنید</div>
+    <div class="map-svg-wrap">
+      <svg id="holeMapSvg" viewBox="0 0 489 751" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div class="map-legend">
+      <span class="item"><span class="dot" style="background:var(--danger);"></span> پر (اشغال)</span>
+      <span class="item"><span class="dot" style="background:var(--ok);"></span> خالی</span>
+    </div>
+  </div>
+
   <div class="panel">
     <form class="entry" id="entryForm" autocomplete="off">
       <div class="field">
@@ -451,6 +528,8 @@
   const exportBtn = document.getElementById("exportBtn");
   const importBtn = document.getElementById("importBtn");
   const importFile = document.getElementById("importFile");
+  const mapPanel = document.getElementById("mapPanel");
+  const holeMapSvg = document.getElementById("holeMapSvg");
 
   const persianDigits = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
   function toPersianDigits(str){
@@ -462,6 +541,84 @@
     const formatted = d.toLocaleDateString('fa-IR', { year:'numeric', month:'2-digit', day:'2-digit' });
     const time = d.toLocaleTimeString('fa-IR', { hour:'2-digit', minute:'2-digit' });
     return formatted + " - " + time;
+  }
+
+  // ---------- نقشهٔ سوراخ‌ها ----------
+  // مختصات دقیق مرکز هر سوراخ، استخراج‌شده از عکس چیدمان واقعی رَک
+  const HOLE_MAP_LAYOUT = [
+    [14,62,58],[15,134,58],[16,206,58],[17,278,58],[18,350,58],
+    [19,86,126],[20,156,126],[21,228,126],[22,300,126],[23,372,126],
+    [24,122,190],[25,194,190],[26,264,190],[27,338,190],
+    [28,84,254],[29,156,256],[30,228,256],[31,300,256],[32,370,256],
+    [33,64,324],[34,136,324],[35,208,324],[36,280,324],[37,352,324],
+    [38,106,390],[39,178,390],[40,250,390],[41,322,390],[42,394,390],
+    [43,70,452],[44,142,452],[45,214,452],[46,286,452],[47,358,452],
+    [48,110,510],[49,180,510],[50,254,510],[51,326,510],[52,396,510],
+    [53,106,574],[54,178,576],[55,248,574],[56,320,574],[57,394,574],
+    [58,70,638],[59,144,638],[60,214,638],[61,286,638],[62,358,638],
+    [63,94,702],[64,166,702],[65,238,702],[66,310,702],[67,382,702]
+  ];
+  const HOLE_RADIUS = 33;
+  let mapBuilt = false;
+
+  function buildHoleMap(){
+    if (mapBuilt) return;
+    const ns = "http://www.w3.org/2000/svg";
+    HOLE_MAP_LAYOUT.forEach(function(h){
+      const num = h[0], cx = h[1], cy = h[2];
+      const circle = document.createElementNS(ns, "circle");
+      circle.setAttribute("cx", cx);
+      circle.setAttribute("cy", cy);
+      circle.setAttribute("r", HOLE_RADIUS);
+      circle.setAttribute("class", "hole-circle");
+      circle.setAttribute("data-hole", num);
+
+      const title = document.createElementNS(ns, "title");
+      circle.appendChild(title);
+
+      const text = document.createElementNS(ns, "text");
+      text.setAttribute("x", cx);
+      text.setAttribute("y", cy);
+      text.setAttribute("class", "hole-circle-text");
+      text.textContent = toPersianDigits(num);
+
+      holeMapSvg.appendChild(circle);
+      holeMapSvg.appendChild(text);
+    });
+
+    holeMapSvg.addEventListener("click", function(e){
+      const circle = e.target.closest(".hole-circle");
+      if (!circle) return;
+      const num = circle.getAttribute("data-hole");
+      const occupant = records.find(r => String(r.hole) === String(num));
+
+      if (occupant){
+        alert(`سوراخ ${toPersianDigits(num)} در اختیار «${occupant.name}» است.`);
+      } else {
+        holeInput.value = num;
+        nameInput.focus();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+
+    mapBuilt = true;
+  }
+
+  function renderMap(){
+    buildHoleMap();
+    const circles = holeMapSvg.querySelectorAll(".hole-circle");
+    circles.forEach(function(circle){
+      const num = circle.getAttribute("data-hole");
+      const occupant = records.find(r => String(r.hole) === String(num));
+      const title = circle.querySelector("title");
+      if (occupant){
+        circle.style.fill = "var(--danger)";
+        title.textContent = `سوراخ ${num} — پر (${occupant.name})`;
+      } else {
+        circle.style.fill = "var(--ok)";
+        title.textContent = `سوراخ ${num} — خالی`;
+      }
+    });
   }
 
   function render(){
@@ -499,6 +656,8 @@
     }
 
     totalCount.textContent = toPersianDigits(records.length);
+
+    renderMap();
   }
 
   form.addEventListener("submit", function(e){
@@ -676,6 +835,14 @@
 
   render();
 })();
+
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(err){
+      console.warn("ثبت Service Worker با خطا مواجه شد:", err);
+    });
+  });
+}
 </script>
 
 </body>
