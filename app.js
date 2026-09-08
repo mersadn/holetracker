@@ -217,20 +217,23 @@
           <span class="row-name">${escapeHtml(r.customer)}</span>
           ${r.notes ? `<span class="row-notes">${escapeHtml(r.notes)}</span>` : ""}
         </td>
-        <td><button class="hole-badge ${delivered ? "delivered" : ""}" data-id="${r.id}" title="برای تغییر وضعیت تحویل کلیک کنید">${toFa(r.hole)}</button></td>
+        <td><span class="hole-badge ${delivered ? "delivered" : ""}">${toFa(r.hole)}</span></td>
         <td>
           <span class="status-pill ${delivered ? "delivered" : ""}"><i></i>${delivered ? "تحویل شده" : "در انتظار"}</span>
         </td>
         <td class="row-date">${faDate(r.createdAt)}</td>
-        <td><button class="delete-btn" data-id="${r.id}" title="حذف رکورد">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
-        </button></td>
+        <td>
+          <button class="deliver-btn ${delivered ? "is-delivered" : ""}" data-id="${r.id}" title="${delivered ? "بازگرداندن به «در انتظار»" : "ثبت تحویل و آزاد کردن سوراخ"}">
+            ${delivered
+              ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg> در انتظار`
+              : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> تحویل داده شد`}
+          </button>
+        </td>
       `;
       body.appendChild(tr);
     });
 
-    body.querySelectorAll(".hole-badge").forEach((b) => b.addEventListener("click", () => toggleDelivery(b.dataset.id)));
-    body.querySelectorAll(".delete-btn").forEach((b) => b.addEventListener("click", () => deleteRecord(b.dataset.id)));
+    body.querySelectorAll(".deliver-btn").forEach((b) => b.addEventListener("click", () => toggleDelivery(b.dataset.id)));
   }
 
   function toggleDelivery(id) {
@@ -250,16 +253,6 @@
       rec.deliveredAt = null;
       toast(`رکورد «${rec.customer}» به «در انتظار» برگشت`, "");
     }
-    saveDb();
-  }
-
-  async function deleteRecord(id) {
-    const rec = db.records.find((r) => r.id === id);
-    if (!rec) return;
-    const ok = await confirmDialog(`رکورد «${rec.customer}» (سوراخ ${toFa(rec.hole)}) حذف شود؟ این عملیات قابل بازگشت نیست.`);
-    if (!ok) return;
-    db.records = db.records.filter((r) => r.id !== id);
-    toast("رکورد حذف شد", "success");
     saveDb();
   }
 
