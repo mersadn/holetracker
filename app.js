@@ -4,10 +4,25 @@
   /* ============================================================
      Constants & helpers
   ============================================================ */
+  // ترتیب دقیق سوراخ ها طبق نقشه
+  const HOLE_LAYOUT = [
+    [13, 16, 17, 14, 18],
+    [19, 20, 21, 22, 23],
+    [24, 25, 26, 27],
+    [28, 29, 30, 31, 32],
+    [33, 34, 35, 36, 37],
+    [38, 39, 40, 41, 42],
+    [43, 44, 45, 46, 47],
+    [48, 49, 50, 51, 52],
+    [53, 54, 55, 56, 57],
+    [58, 59, 60, 61, 62],
+    [63, 64, 65, 66, 67]
+  ];
   const HOLE_START = 14;
   const HOLE_END = 67;
-  const ROW_SIZES = [5, 5, 4, 5, 5, 5, 5, 5, 5, 5, 5]; // matches the reference layout, sums to 54
   const DB_KEY = "dtf_tracker_db_v1";
+  const BACKUP_PATH_KEY = "dtf_backup_path_v1";
+  const BACKUP_UPLOADS_PATH_KEY = "dtf_backup_uploads_path_v1";
 
   const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
   const toFa = (n) => String(n).replace(/[0-9]/g, (d) => FA_DIGITS[d]);
@@ -71,9 +86,7 @@
   }
 
   function allHoleNumbers() {
-    const arr = [];
-    for (let n = HOLE_START; n <= HOLE_END; n++) arr.push(n);
-    return arr;
+    return HOLE_LAYOUT.flat();
   }
 
   function availableHoles() {
@@ -133,12 +146,9 @@
     container.innerHTML = "";
     const occ = occupiedHoleMap();
 
-    let cursor = HOLE_START;
-    ROW_SIZES.forEach((size, rowIdx) => {
+    HOLE_LAYOUT.forEach((rowHoles, rowIdx) => {
       const row = el("div", "hole-row" + (rowIdx % 2 === 1 ? " offset" : ""));
-      for (let i = 0; i < size; i++) {
-        const n = cursor++;
-        if (n > HOLE_END) break;
+      rowHoles.forEach((n) => {
         const rec = occ.get(n);
         const btn = el("button", "hole");
         btn.type = "button";
@@ -152,7 +162,7 @@
 
         btn.addEventListener("click", () => onHoleClick(n, rec));
         row.appendChild(btn);
-      }
+      });
       container.appendChild(row);
     });
   }
@@ -240,9 +250,14 @@
     const rec = db.records.find((r) => r.id === id);
     if (!rec) return;
     if (rec.status === "waiting") {
-      rec.status = "delivered";
-      rec.deliveredAt = new Date().toISOString();
-      toast(`رول «${rec.customer}» تحویل داده شد و سوراخ ${toFa(rec.hole)} آزاد شد`, "success");
+      // حذف خودکار سفارش تحویل شده
+      const idx = db.records.indexOf(rec);
+      if (idx !== -1) {
+        const customer = rec.customer;
+        const hole = rec.hole;
+        db.records.splice(idx, 1);
+        toast(`رول «${customer}» تحویل داده شد و حذف گردید، سوراخ ${toFa(hole)} آزاد شد`, "success");
+      }
     } else {
       const occ = occupiedHoleMap();
       if (occ.has(rec.hole)) {
@@ -442,6 +457,181 @@
       navigator.serviceWorker.register("service-worker.js").catch((err) => console.error("SW registration failed", err));
     });
   }
+
+  /* ============================================================
+     Settings & Backup Management
+  ============================================================ */
+  const settingsModal = el("div", "modal-overlay");
+  settingsModal.id = "settingsModal";
+  settingsModal.innerHTML = `
+    <div class="modal-box settings-box">
+      <div class="settings-header">
+        <h2>تنظیمات و بک‌آپ</h2>
+        <button class="close-btn" id="closeSettings">✕</button>
+      </div>
+      <div class="settings-content">
+        <div class="settings-section">
+          <h3>مسیر ذخیره بک‌آپ</h3>
+          <p class="settings-help">مسیری که فایل های بک‌آپ در آن ذخیره می‌شوند:</p>
+          <div class="settings-input-group">
+            <input type="text" id="backupPathInput" placeholder="مثال: C:\\Backups یا /home/user/backups" class="settings-input">
+            <button id="saveBackupPath" class="ghost-btn">ذخیره</button>
+          </div>
+          <span id="currentBackupPath" class="settings-info"></span>
+        </div>
+
+        <div class="settings-section">
+          <h3>مسیر آپلود بک‌آپ</h3>
+          <p class="settings-help">مسیری که فایل های بک‌آپ از آنجا بارگذاری می‌شوند:</p>
+          <div class="settings-input-group">
+            <input type="text" id="uploadPathInput" placeholder="مثال: C:\\BackupFiles یا /home/user/backup-files" class="settings-input">
+            <button id="saveUploadPath" class="ghost-btn">ذخیره</button>
+          </div>
+          <span id="currentUploadPath" class="settings-info"></span>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <div class="settings-section">
+          <h3>عملیات بک‌آپ</h3>
+          <div class="settings-buttons">
+            <button id="btnBackupNow" class="action-btn backup-btn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+              ایجاد بک‌آپ جدید
+            </button>
+            <button id="btnUploadBackup" class="action-btn upload-btn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0-4 4m4-4 4 4M4 7V4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v3"/></svg>
+              بارگذاری بک‌آپ
+            </button>
+            <button id="btnRestoreBackup" class="action-btn restore-btn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
+              بازیابی بک‌آپ
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <div class="settings-section">
+          <h3>اطلاعات سیستم</h3>
+          <div class="settings-info-list">
+            <div class="info-item">
+              <span class="info-label">کل رکوردها:</span>
+              <span class="info-value" id="settingsRecordCount">۰</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">آخرین به‌روزرسانی:</span>
+              <span class="info-value" id="settingsLastUpdate">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(settingsModal);
+
+  function loadSettingsUI() {
+    const backupPath = localStorage.getItem(BACKUP_PATH_KEY) || "";
+    const uploadPath = localStorage.getItem(BACKUP_UPLOADS_PATH_KEY) || "";
+    $("#backupPathInput").value = backupPath;
+    $("#uploadPathInput").value = uploadPath;
+    $("#currentBackupPath").textContent = backupPath ? `مسیر فعلی: ${backupPath}` : "مسیری تعیین نشده است";
+    $("#currentUploadPath").textContent = uploadPath ? `مسیر فعلی: ${uploadPath}` : "مسیری تعیین نشده است";
+    $("#settingsRecordCount").textContent = toFa(db.records.length);
+    $("#settingsLastUpdate").textContent = faDate(db.updatedAt) || "-";
+  }
+
+  function openSettings() {
+    loadSettingsUI();
+    settingsModal.hidden = false;
+  }
+
+  function closeSettings() {
+    settingsModal.hidden = true;
+  }
+
+  $("#btnSettings").addEventListener("click", openSettings);
+  $("#closeSettings").addEventListener("click", closeSettings);
+  settingsModal.addEventListener("click", (e) => {
+    if (e.target === settingsModal) closeSettings();
+  });
+
+  // ذخیره مسیرها
+  $("#saveBackupPath").addEventListener("click", () => {
+    const path = $("#backupPathInput").value.trim();
+    localStorage.setItem(BACKUP_PATH_KEY, path);
+    toast(path ? "مسیر بک‌آپ ذخیره شد" : "مسیر پاک شد", "success");
+    loadSettingsUI();
+  });
+
+  $("#saveUploadPath").addEventListener("click", () => {
+    const path = $("#uploadPathInput").value.trim();
+    localStorage.setItem(BACKUP_UPLOADS_PATH_KEY, path);
+    toast(path ? "مسیر آپلود ذخیره شد" : "مسیر پاک شد", "success");
+    loadSettingsUI();
+  });
+
+  // ایجاد بک‌آپ جدید
+  $("#btnBackupNow").addEventListener("click", () => {
+    const data = JSON.stringify(db, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a");
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    const fileName = `dtf-backup-${stamp}.json`;
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("فایل بک‌آپ دانلود شد", "success");
+    loadSettingsUI();
+  });
+
+  // بارگذاری بک‌آپ
+  const fileBackupInput = el("input");
+  fileBackupInput.type = "file";
+  fileBackupInput.accept = "application/json";
+  fileBackupInput.style.display = "none";
+  document.body.appendChild(fileBackupInput);
+
+  $("#btnUploadBackup").addEventListener("click", () => {
+    fileBackupInput.click();
+  });
+
+  fileBackupInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || !Array.isArray(parsed.records)) throw new Error("invalid");
+
+      const ok = await confirmDialog(`دیتابیس فعلی با ${toFa(parsed.records.length)} رکورد از بک‌آپ جایگزین شود؟`);
+      if (!ok) { e.target.value = ""; return; }
+
+      db = { version: 1, updatedAt: new Date().toISOString(), records: parsed.records };
+      selectedHoleForForm = null;
+      matchedHoleSet = new Set();
+      searchInput.value = "";
+      searchQuery = "";
+      saveDb();
+      toast("دیتابیس با بک‌آپ بازیابی شد", "success");
+      loadSettingsUI();
+    } catch (err) {
+      console.error(err);
+      toast("فایل انتخاب‌شده معتبر نیست", "error");
+    } finally {
+      e.target.value = "";
+    }
+  });
+
+  // بازیابی بک‌آپ (فیلتر شده)
+  $("#btnRestoreBackup").addEventListener("click", () => {
+    // این دکمه برای انتخاب از بک‌آپ های قبلی است
+    toast("این قابلیت نیاز به سیستم فایل دارد", "info");
+  });
 
   /* ============================================================
      Master render
