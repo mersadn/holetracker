@@ -84,48 +84,6 @@
 
   <main class="board">
 
-    <!-- MAP PANEL -->
-    <section class="panel panel-map">
-      <div class="panel-head">
-        <h2>نقشه سوراخ‌ها</h2>
-        <div class="legend">
-          <span><i class="lg-dot lg-empty"></i>آزاد</span>
-          <span><i class="lg-dot lg-filled"></i>پر</span>
-          <span><i class="lg-dot lg-match"></i>نتیجه جستجو</span>
-        </div>
-      </div>
-      <div class="map-scroll">
-        <div id="holeMap" class="hole-map"></div>
-      </div>
-    </section>
-
-    <!-- LIST PANEL -->
-    <section class="panel panel-list">
-      <div class="panel-head">
-        <h2>لیست ثبت‌شده‌ها</h2>
-        <span class="panel-count" id="listCount">۰ رکورد</span>
-      </div>
-      <div class="list-table-wrap">
-        <table class="list-table">
-          <thead>
-            <tr>
-              <th class="col-idx">ردیف</th>
-              <th class="col-name">نام مشتری</th>
-              <th class="col-hole">سوراخ</th>
-              <th class="col-status">وضعیت</th>
-              <th class="col-date">تاریخ</th>
-              <th class="col-del"></th>
-            </tr>
-          </thead>
-          <tbody id="listBody"></tbody>
-        </table>
-        <div id="listEmpty" class="list-empty-state" hidden>
-          <p>هنوز رکوردی ثبت نشده است.</p>
-          <span>از فرم روبه‌رو یک رکورد جدید اضافه کنید.</span>
-        </div>
-      </div>
-    </section>
-
     <!-- FORM PANEL -->
     <section class="panel panel-form">
       <div class="panel-head">
@@ -154,10 +112,52 @@
 
         <p class="hint-text">
           روی هر <b>سوراخ آزاد</b> در نقشه کنار فرم کلیک کنید تا در فرم انتخاب شود.
-          برای <b>تحویل دادن</b>، روی برچسب شماره سوراخ در لیست کلیک کنید؛ با کلیک دوباره،
-          به «در انتظار» برمی‌گردد و سوراخ دوباره آزاد می‌شود.
+          برای <b>تحویل دادن</b>، روی دکمه «تحویل داده شد» کنار هر رکورد در لیست کلیک کنید؛
+          با کلیک دوباره، به «در انتظار» برمی‌گردد و سوراخ دوباره آزاد می‌شود.
         </p>
       </form>
+    </section>
+
+    <!-- LIST PANEL -->
+    <section class="panel panel-list">
+      <div class="panel-head">
+        <h2>لیست ثبت‌شده‌ها</h2>
+        <span class="panel-count" id="listCount">۰ رکورد</span>
+      </div>
+      <div class="list-table-wrap">
+        <table class="list-table">
+          <thead>
+            <tr>
+              <th class="col-idx">ردیف</th>
+              <th class="col-name">نام مشتری</th>
+              <th class="col-hole">سوراخ</th>
+              <th class="col-status">وضعیت</th>
+              <th class="col-date">تاریخ</th>
+              <th class="col-action"></th>
+            </tr>
+          </thead>
+          <tbody id="listBody"></tbody>
+        </table>
+        <div id="listEmpty" class="list-empty-state" hidden>
+          <p>هنوز رکوردی ثبت نشده است.</p>
+          <span>از فرم کنار جدول یک رکورد جدید اضافه کنید.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAP PANEL -->
+    <section class="panel panel-map">
+      <div class="panel-head">
+        <h2>نقشه سوراخ‌ها</h2>
+        <div class="legend">
+          <span><i class="lg-dot lg-empty"></i>آزاد</span>
+          <span><i class="lg-dot lg-filled"></i>پر</span>
+          <span><i class="lg-dot lg-match"></i>نتیجه جستجو</span>
+        </div>
+      </div>
+      <div class="map-scroll">
+        <div id="holeMap" class="hole-map"></div>
+      </div>
     </section>
 
   </main>
