@@ -6,7 +6,7 @@
   ============================================================ */
   // ترتیب دقیق سوراخ ها طبق نقشه
   const HOLE_LAYOUT = [
-    [13, 16, 17, 14, 18],
+    [14, 15, 16, 17, 18],
     [19, 20, 21, 22, 23],
     [24, 25, 26, 27],
     [28, 29, 30, 31, 32],
@@ -21,8 +21,6 @@
   const HOLE_START = 14;
   const HOLE_END = 67;
   const DB_KEY = "dtf_tracker_db_v1";
-  const BACKUP_PATH_KEY = "dtf_backup_path_v1";
-  const BACKUP_UPLOADS_PATH_KEY = "dtf_backup_uploads_path_v1";
 
   const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
   const toFa = (n) => String(n).replace(/[0-9]/g, (d) => FA_DIGITS[d]);
@@ -125,6 +123,158 @@
   }
 
   /* ============================================================
+     Backup folder (File System Access API)
+     یک پوشه (که می‌تواند مسیر شبکه/سرور مشترک هم باشد) یک‌بار روی هر
+     سیستم انتخاب می‌شود و از آن پس «خروجی دیتابیس» بدون هیچ پنجره‌ای
+     مستقیم در همان پوشه ذخیره، و «ورودی دیتابیس» آخرین فایل را از همان
+     پوشه می‌خواند؛ نیازی به انتخاب دوباره‌ی مسیر روی هر بار عملیات نیست.
+  ============================================================ */
+  const FS_SUPPORTED = "showDirectoryPicker" in window;
+  const IDB_NAME = "dtf_tracker_fs_v1";
+  const IDB_STORE = "handles";
+  const IDB_KEY = "backupDir";
+
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbGet(key) {
+    const conn = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = conn.transaction(IDB_STORE, "readonly");
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbSet(key, val) {
+    const conn = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = conn.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).put(val, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function idbDel(key) {
+    const conn = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = conn.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  let backupDirHandle = null;
+  let backupDirStatus = "none"; // none | granted | prompt | unsupported
+
+  async function initBackupFolder() {
+    if (!FS_SUPPORTED) { backupDirStatus = "unsupported"; return; }
+    try {
+      const handle = await idbGet(IDB_KEY);
+      if (!handle) { backupDirStatus = "none"; return; }
+      backupDirHandle = handle;
+      const perm = await handle.queryPermission({ mode: "readwrite" });
+      backupDirStatus = perm === "granted" ? "granted" : "prompt";
+    } catch (e) {
+      console.error("initBackupFolder failed", e);
+      backupDirHandle = null;
+      backupDirStatus = "none";
+    }
+  }
+
+  async function ensureFolderReady() {
+    if (!backupDirHandle) return false;
+    if (backupDirStatus === "granted") return true;
+    try {
+      const perm = await backupDirHandle.queryPermission({ mode: "readwrite" });
+      if (perm === "granted") { backupDirStatus = "granted"; return true; }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  async function chooseBackupFolder() {
+    if (!FS_SUPPORTED) {
+      toast("این قابلیت فقط در مرورگر Chrome یا Edge (نسخه دسکتاپ) در دسترس است", "error");
+      return;
+    }
+    try {
+      const handle = await window.showDirectoryPicker({ id: "dtf-backup-folder", mode: "readwrite" });
+      await idbSet(IDB_KEY, handle);
+      backupDirHandle = handle;
+      backupDirStatus = "granted";
+      toast(`پوشه بک‌آپ متصل شد: ${handle.name}`, "success");
+      updateFolderStatusUI();
+    } catch (e) {
+      if (e && e.name !== "AbortError") { console.error(e); toast("انتخاب پوشه انجام نشد", "error"); }
+    }
+  }
+
+  async function reconnectBackupFolder() {
+    if (!backupDirHandle) { chooseBackupFolder(); return; }
+    try {
+      const perm = await backupDirHandle.requestPermission({ mode: "readwrite" });
+      backupDirStatus = perm === "granted" ? "granted" : "prompt";
+      if (perm === "granted") toast("اتصال به پوشه بک‌آپ برقرار شد", "success");
+      else toast("دسترسی به پوشه تایید نشد", "error");
+      updateFolderStatusUI();
+    } catch (e) { console.error(e); toast("خطا در اتصال به پوشه", "error"); }
+  }
+
+  async function unlinkBackupFolder() {
+    await idbDel(IDB_KEY);
+    backupDirHandle = null;
+    backupDirStatus = "none";
+    toast("اتصال پوشه بک‌آپ قطع شد", "");
+    updateFolderStatusUI();
+  }
+
+  function backupFileName() {
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    return `dtf-backup-${stamp}.json`;
+  }
+
+  async function writeBackupToFolder() {
+    const ready = await ensureFolderReady();
+    if (!ready) return null;
+    const name = backupFileName();
+    const fileHandle = await backupDirHandle.getFileHandle(name, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(db, null, 2));
+    await writable.close();
+    return name;
+  }
+
+  async function listBackupFiles() {
+    const ready = await ensureFolderReady();
+    if (!ready) return [];
+    const items = [];
+    for await (const [name, handle] of backupDirHandle.entries()) {
+      if (handle.kind === "file" && name.toLowerCase().endsWith(".json")) {
+        try {
+          const file = await handle.getFile();
+          items.push({ name, handle, lastModified: file.lastModified });
+        } catch (e) { /* skip unreadable entry */ }
+      }
+    }
+    items.sort((a, b) => b.lastModified - a.lastModified);
+    return items;
+  }
+
+  async function readLatestBackupFromFolder() {
+    const files = await listBackupFiles();
+    if (files.length === 0) return null;
+    const file = await files[0].handle.getFile();
+    const text = await file.text();
+    return { name: files[0].name, text };
+  }
+
+  /* ============================================================
      Render: stats
   ============================================================ */
   function renderStats() {
@@ -147,12 +297,18 @@
     const occ = occupiedHoleMap();
 
     HOLE_LAYOUT.forEach((rowHoles, rowIdx) => {
-      const row = el("div", "hole-row" + (rowIdx % 2 === 1 ? " offset" : ""));
+      // ردیف‌ها با align-items:center به‌صورت خودکار وسط‌چین می‌شوند، پس
+      // فقط تعداد سوراخ‌های هر ردیف طبق نقشه اصلی مهم است (بدون افست دستی).
+      const row = el("div", "hole-row");
       rowHoles.forEach((n) => {
         const rec = occ.get(n);
         const btn = el("button", "hole");
         btn.type = "button";
         btn.dataset.hole = n;
+
+        // برای ردیف اول، راهنما به‌جای بالا از پایین سوراخ نمایش داده می‌شود
+        // تا زیر نوار بالای صفحه/جدول قطع یا پنهان نشود.
+        if (rowIdx === 0) btn.classList.add("tip-below");
 
         if (rec) btn.classList.add("is-filled");
         if (matchedHoleSet.has(n)) btn.classList.add("is-match");
@@ -386,7 +542,7 @@
   /* ============================================================
      Export / Import database
   ============================================================ */
-  $("#btnExport").addEventListener("click", () => {
+  function downloadBackupFile() {
     const data = JSON.stringify(db, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -399,20 +555,15 @@
     a.remove();
     URL.revokeObjectURL(url);
     toast("فایل پشتیبان دیتابیس دانلود شد", "success");
-  });
+  }
 
-  $("#btnImport").addEventListener("click", () => $("#fileImport").click());
-
-  $("#fileImport").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  async function restoreFromJsonText(text, label) {
     try {
-      const text = await file.text();
       const parsed = JSON.parse(text);
       if (!parsed || !Array.isArray(parsed.records)) throw new Error("invalid");
 
-      const ok = await confirmDialog(`دیتابیس فعلی با ${toFa(parsed.records.length)} رکورد از فایل جایگزین شود؟ اطلاعات فعلی از بین می‌رود (پیشنهاد می‌شود ابتدا خروجی بگیرید).`);
-      if (!ok) { e.target.value = ""; return; }
+      const ok = await confirmDialog(`دیتابیس فعلی با ${toFa(parsed.records.length)} رکورد از «${label}» جایگزین شود؟ اطلاعات فعلی از بین می‌رود.`);
+      if (!ok) return false;
 
       db = { version: 1, updatedAt: new Date().toISOString(), records: parsed.records };
       selectedHoleForForm = null;
@@ -421,6 +572,56 @@
       searchQuery = "";
       saveDb();
       toast("دیتابیس با موفقیت بازیابی شد", "success");
+      return true;
+    } catch (err) {
+      console.error(err);
+      toast("فایل انتخاب‌شده معتبر نیست", "error");
+      return false;
+    }
+  }
+
+  $("#btnExport").addEventListener("click", async () => {
+    if (backupDirHandle) {
+      try {
+        const ready = await ensureFolderReady();
+        if (ready) {
+          const name = await writeBackupToFolder();
+          if (name) { toast(`بک‌آپ در پوشه انتخابی ذخیره شد: ${name}`, "success"); return; }
+        } else {
+          toast("دسترسی به پوشه بک‌آپ نیاز به تایید مجدد دارد — از «تنظیمات» اقدام کنید. فعلاً دانلود معمولی انجام می‌شود.", "");
+        }
+      } catch (e) {
+        console.error(e);
+        toast("ذخیره در پوشه ناموفق بود، دانلود معمولی انجام شد", "error");
+      }
+    }
+    downloadBackupFile();
+  });
+
+  $("#btnImport").addEventListener("click", async () => {
+    if (backupDirHandle) {
+      const ready = await ensureFolderReady();
+      if (ready) {
+        try {
+          const latest = await readLatestBackupFromFolder();
+          if (!latest) { toast("هیچ فایل بک‌آپی در پوشه انتخابی یافت نشد", "error"); return; }
+          await restoreFromJsonText(latest.text, latest.name);
+          return;
+        } catch (e) { console.error(e); toast("خواندن از پوشه ناموفق بود", "error"); }
+      } else {
+        toast("دسترسی به پوشه بک‌آپ نیاز به تایید مجدد دارد — از «تنظیمات» اقدام کنید", "error");
+        return;
+      }
+    }
+    $("#fileImport").click();
+  });
+
+  $("#fileImport").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      await restoreFromJsonText(text, file.name);
     } catch (err) {
       console.error(err);
       toast("فایل انتخاب‌شده معتبر نیست", "error");
@@ -452,9 +653,22 @@
 
   window.addEventListener("appinstalled", () => { installBtn.hidden = true; });
 
+  // به‌روزرسانی خودکار: وقتی نسخه جدید سرویس‌ورکر جایگزین نسخه قبلی می‌شود،
+  // صفحه یک‌بار به‌صورت خودکار رفرش می‌شود تا نیازی به رفرش دستی توسط کاربر نباشد.
   if ("serviceWorker" in navigator) {
+    let swRefreshed = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (swRefreshed) return;
+      swRefreshed = true;
+      window.location.reload();
+    });
+
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("service-worker.js").catch((err) => console.error("SW registration failed", err));
+      navigator.serviceWorker.register("service-worker.js").then((reg) => {
+        // هر بار صفحه باز می‌شود، بررسی می‌شود که نسخه جدیدتری از فایل‌ها وجود دارد یا نه
+        reg.update().catch(() => {});
+        setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      }).catch((err) => console.error("SW registration failed", err));
     });
   }
 
@@ -471,23 +685,21 @@
       </div>
       <div class="settings-content">
         <div class="settings-section">
-          <h3>مسیر ذخیره بک‌آپ</h3>
-          <p class="settings-help">مسیری که فایل های بک‌آپ در آن ذخیره می‌شوند:</p>
-          <div class="settings-input-group">
-            <input type="text" id="backupPathInput" placeholder="مثال: C:\\Backups یا /home/user/backups" class="settings-input">
-            <button id="saveBackupPath" class="ghost-btn">ذخیره</button>
+          <h3>پوشه بک‌آپ (قابل استفاده روی شبکه)</h3>
+          <p class="settings-help">
+            یک پوشه ثابت (می‌تواند یک پوشه مشترک روی شبکه/سرور هم باشد) انتخاب کنید.
+            از این پس «خروجی دیتابیس» همیشه در همین پوشه ذخیره می‌شود و «ورودی دیتابیس» هم آخرین بک‌آپ را از همین پوشه می‌خواند —
+            بدون نیاز به انتخاب فایل یا مسیر در هر بار. روی هر سیستم فقط یک‌بار لازم است این پوشه انتخاب شود.
+          </p>
+          <div class="folder-status" id="folderStatus">
+            <span id="folderStatusDot" class="folder-dot"></span>
+            <span id="folderStatusText">در حال بررسی...</span>
           </div>
-          <span id="currentBackupPath" class="settings-info"></span>
-        </div>
-
-        <div class="settings-section">
-          <h3>مسیر آپلود بک‌آپ</h3>
-          <p class="settings-help">مسیری که فایل های بک‌آپ از آنجا بارگذاری می‌شوند:</p>
-          <div class="settings-input-group">
-            <input type="text" id="uploadPathInput" placeholder="مثال: C:\\BackupFiles یا /home/user/backup-files" class="settings-input">
-            <button id="saveUploadPath" class="ghost-btn">ذخیره</button>
+          <div class="settings-buttons folder-buttons">
+            <button id="btnChooseFolder" class="action-btn">انتخاب / تغییر پوشه</button>
+            <button id="btnReconnectFolder" class="action-btn" hidden>اتصال مجدد به پوشه</button>
+            <button id="btnUnlinkFolder" class="action-btn danger-outline" hidden>قطع اتصال پوشه</button>
           </div>
-          <span id="currentUploadPath" class="settings-info"></span>
         </div>
 
         <div class="settings-divider"></div>
@@ -501,13 +713,14 @@
             </button>
             <button id="btnUploadBackup" class="action-btn upload-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0-4 4m4-4 4 4M4 7V4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v3"/></svg>
-              بارگذاری بک‌آپ
+              بارگذاری آخرین بک‌آپ
             </button>
             <button id="btnRestoreBackup" class="action-btn restore-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
-              بازیابی بک‌آپ
+              انتخاب از فایل‌های پوشه
             </button>
           </div>
+          <div id="backupFileList" class="backup-file-list" hidden></div>
         </div>
 
         <div class="settings-divider"></div>
@@ -530,15 +743,51 @@
   `;
   document.body.appendChild(settingsModal);
 
+  function updateFolderStatusUI() {
+    const dot = $("#folderStatusDot");
+    const text = $("#folderStatusText");
+    const btnChoose = $("#btnChooseFolder");
+    const btnReconnect = $("#btnReconnectFolder");
+    const btnUnlink = $("#btnUnlinkFolder");
+    if (!dot) return;
+
+    if (!FS_SUPPORTED) {
+      dot.className = "folder-dot dot-off";
+      text.textContent = "این قابلیت فقط در مرورگر Chrome یا Edge (نسخه دسکتاپ) پشتیبانی می‌شود";
+      btnChoose.disabled = true;
+      btnReconnect.hidden = true;
+      btnUnlink.hidden = true;
+      return;
+    }
+
+    btnChoose.disabled = false;
+    if (!backupDirHandle) {
+      dot.className = "folder-dot dot-off";
+      text.textContent = "هنوز پوشه‌ای انتخاب نشده است — فعلاً از دانلود/انتخاب فایل معمولی استفاده می‌شود";
+      btnChoose.textContent = "انتخاب پوشه";
+      btnReconnect.hidden = true;
+      btnUnlink.hidden = true;
+    } else if (backupDirStatus === "granted") {
+      dot.className = "folder-dot dot-on";
+      text.textContent = `متصل به پوشه: «${backupDirHandle.name}»`;
+      btnChoose.textContent = "تغییر پوشه";
+      btnReconnect.hidden = true;
+      btnUnlink.hidden = false;
+    } else {
+      dot.className = "folder-dot dot-warn";
+      text.textContent = `پوشه «${backupDirHandle.name}» متصل بود ولی دسترسی نیاز به تایید مجدد دارد`;
+      btnChoose.textContent = "تغییر پوشه";
+      btnReconnect.hidden = false;
+      btnUnlink.hidden = false;
+    }
+  }
+
   function loadSettingsUI() {
-    const backupPath = localStorage.getItem(BACKUP_PATH_KEY) || "";
-    const uploadPath = localStorage.getItem(BACKUP_UPLOADS_PATH_KEY) || "";
-    $("#backupPathInput").value = backupPath;
-    $("#uploadPathInput").value = uploadPath;
-    $("#currentBackupPath").textContent = backupPath ? `مسیر فعلی: ${backupPath}` : "مسیری تعیین نشده است";
-    $("#currentUploadPath").textContent = uploadPath ? `مسیر فعلی: ${uploadPath}` : "مسیری تعیین نشده است";
     $("#settingsRecordCount").textContent = toFa(db.records.length);
     $("#settingsLastUpdate").textContent = faDate(db.updatedAt) || "-";
+    $("#backupFileList").hidden = true;
+    $("#backupFileList").innerHTML = "";
+    updateFolderStatusUI();
   }
 
   function openSettings() {
@@ -556,47 +805,52 @@
     if (e.target === settingsModal) closeSettings();
   });
 
-  // ذخیره مسیرها
-  $("#saveBackupPath").addEventListener("click", () => {
-    const path = $("#backupPathInput").value.trim();
-    localStorage.setItem(BACKUP_PATH_KEY, path);
-    toast(path ? "مسیر بک‌آپ ذخیره شد" : "مسیر پاک شد", "success");
+  // انتخاب / تغییر / قطع اتصال پوشه بک‌آپ
+  $("#btnChooseFolder").addEventListener("click", chooseBackupFolder);
+  $("#btnReconnectFolder").addEventListener("click", reconnectBackupFolder);
+  $("#btnUnlinkFolder").addEventListener("click", unlinkBackupFolder);
+
+  // ایجاد بک‌آپ جدید — اگر پوشه متصل است مستقیم در همان پوشه ذخیره می‌شود
+  $("#btnBackupNow").addEventListener("click", async () => {
+    if (backupDirHandle) {
+      const ready = await ensureFolderReady();
+      if (ready) {
+        try {
+          const name = await writeBackupToFolder();
+          if (name) { toast(`بک‌آپ در پوشه ذخیره شد: ${name}`, "success"); loadSettingsUI(); return; }
+        } catch (e) { console.error(e); toast("ذخیره در پوشه ناموفق بود، دانلود معمولی انجام شد", "error"); }
+      } else {
+        toast("دسترسی به پوشه نیاز به تایید مجدد دارد — ابتدا «اتصال مجدد به پوشه» را بزنید", "error");
+        return;
+      }
+    }
+    downloadBackupFile();
     loadSettingsUI();
   });
 
-  $("#saveUploadPath").addEventListener("click", () => {
-    const path = $("#uploadPathInput").value.trim();
-    localStorage.setItem(BACKUP_UPLOADS_PATH_KEY, path);
-    toast(path ? "مسیر آپلود ذخیره شد" : "مسیر پاک شد", "success");
-    loadSettingsUI();
-  });
-
-  // ایجاد بک‌آپ جدید
-  $("#btnBackupNow").addEventListener("click", () => {
-    const data = JSON.stringify(db, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = el("a");
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-    const fileName = `dtf-backup-${stamp}.json`;
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast("فایل بک‌آپ دانلود شد", "success");
-    loadSettingsUI();
-  });
-
-  // بارگذاری بک‌آپ
+  // بارگذاری آخرین بک‌آپ — اگر پوشه متصل است خودکار از همان پوشه خوانده می‌شود
   const fileBackupInput = el("input");
   fileBackupInput.type = "file";
   fileBackupInput.accept = "application/json";
   fileBackupInput.style.display = "none";
   document.body.appendChild(fileBackupInput);
 
-  $("#btnUploadBackup").addEventListener("click", () => {
+  $("#btnUploadBackup").addEventListener("click", async () => {
+    if (backupDirHandle) {
+      const ready = await ensureFolderReady();
+      if (ready) {
+        try {
+          const latest = await readLatestBackupFromFolder();
+          if (!latest) { toast("هیچ فایل بک‌آپی در پوشه یافت نشد", "error"); return; }
+          const done = await restoreFromJsonText(latest.text, latest.name);
+          if (done) loadSettingsUI();
+          return;
+        } catch (e) { console.error(e); toast("خواندن از پوشه ناموفق بود", "error"); }
+      } else {
+        toast("دسترسی به پوشه نیاز به تایید مجدد دارد — ابتدا «اتصال مجدد به پوشه» را بزنید", "error");
+        return;
+      }
+    }
     fileBackupInput.click();
   });
 
@@ -605,20 +859,8 @@
     if (!file) return;
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (!parsed || !Array.isArray(parsed.records)) throw new Error("invalid");
-
-      const ok = await confirmDialog(`دیتابیس فعلی با ${toFa(parsed.records.length)} رکورد از بک‌آپ جایگزین شود؟`);
-      if (!ok) { e.target.value = ""; return; }
-
-      db = { version: 1, updatedAt: new Date().toISOString(), records: parsed.records };
-      selectedHoleForForm = null;
-      matchedHoleSet = new Set();
-      searchInput.value = "";
-      searchQuery = "";
-      saveDb();
-      toast("دیتابیس با بک‌آپ بازیابی شد", "success");
-      loadSettingsUI();
+      const done = await restoreFromJsonText(text, file.name);
+      if (done) loadSettingsUI();
     } catch (err) {
       console.error(err);
       toast("فایل انتخاب‌شده معتبر نیست", "error");
@@ -627,10 +869,34 @@
     }
   });
 
-  // بازیابی بک‌آپ (فیلتر شده)
-  $("#btnRestoreBackup").addEventListener("click", () => {
-    // این دکمه برای انتخاب از بک‌آپ های قبلی است
-    toast("این قابلیت نیاز به سیستم فایل دارد", "info");
+  // نمایش فهرست فایل‌های موجود در پوشه برای انتخاب دستی یک بک‌آپ خاص
+  $("#btnRestoreBackup").addEventListener("click", async () => {
+    if (!backupDirHandle) { toast("ابتدا از بخش بالا یک پوشه بک‌آپ انتخاب کنید", "error"); return; }
+    const ready = await ensureFolderReady();
+    if (!ready) { toast("دسترسی به پوشه نیاز به تایید مجدد دارد — ابتدا «اتصال مجدد به پوشه» را بزنید", "error"); return; }
+
+    const wrap = $("#backupFileList");
+    wrap.innerHTML = `<div class="backup-file-empty">در حال خواندن پوشه...</div>`;
+    wrap.hidden = false;
+
+    const files = await listBackupFiles();
+    wrap.innerHTML = "";
+    if (files.length === 0) {
+      wrap.innerHTML = `<div class="backup-file-empty">فایل بک‌آپی (json.) در این پوشه یافت نشد</div>`;
+      return;
+    }
+    files.slice(0, 15).forEach((f) => {
+      const item = el("div", "backup-file-item");
+      const d = new Date(f.lastModified);
+      item.innerHTML = `<span class="backup-file-name">${escapeHtml(f.name)}</span><span class="backup-file-date">${escapeHtml(d.toLocaleString("fa-IR"))}</span>`;
+      item.addEventListener("click", async () => {
+        const file = await f.handle.getFile();
+        const text = await file.text();
+        const done = await restoreFromJsonText(text, f.name);
+        if (done) { wrap.hidden = true; loadSettingsUI(); }
+      });
+      wrap.appendChild(item);
+    });
   });
 
   /* ============================================================
@@ -644,4 +910,7 @@
   }
 
   render();
+
+  // بررسی وضعیت پوشه بک‌آپ ذخیره‌شده (در پس‌زمینه، بدون تاخیر در نمایش اولیه)
+  initBackupFolder().then(() => updateFolderStatusUI());
 })();
