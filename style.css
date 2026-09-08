@@ -273,10 +273,10 @@ body{
 .lg-match{ background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.25); }
 
 /* ===================== Hole map ===================== */
+/* بدون اسکرول: تمام سوراخ‌ها یک‌جا نمایش داده می‌شوند */
+.panel-map{ overflow: visible; }
 .map-scroll{
   padding: 22px 18px 26px;
-  max-height: 560px;
-  overflow-y: auto;
 }
 .hole-map{
   direction: rtl;
@@ -290,8 +290,9 @@ body{
   display: flex;
   flex-direction: row;
   gap: 11px;
+  /* ردیف‌های ۴تایی به‌خاطر align-items:center روی هسته اصلی، خودکار وسط‌چین
+     می‌شوند و دقیقاً مطابق نقشهٔ اصلی (ردیف ۲۴ تا ۲۷) کمی تورفته نمایش داده می‌شوند. */
 }
-.hole-row.offset{ margin-inline-start: 30px; }
 
 .hole{
   --c: var(--green);
@@ -366,6 +367,13 @@ body{
   z-index: 5;
 }
 .hole:hover .hole-tip{ opacity: 1; transform: translateX(50%) translateY(-2px); }
+
+/* راهنمای ردیف اول از پایین سوراخ نمایش داده می‌شود تا بالای پنل قطع/پنهان نشود */
+.hole.tip-below .hole-tip{
+  bottom: auto;
+  top: calc(100% + 9px);
+}
+.hole.tip-below:hover .hole-tip{ transform: translateX(50%) translateY(2px); }
 
 /* ===================== List table ===================== */
 .list-table-wrap{ position: relative; }
@@ -724,6 +732,69 @@ body{
 .action-btn.backup-btn{ grid-column: 1 / -1; }
 .action-btn.upload-btn{ grid-column: 1 / -1; }
 .action-btn.restore-btn{ grid-column: 1 / -1; }
+
+.action-btn.danger-outline{
+  border-color: rgba(248,113,113,.4);
+  color: #fca5a5;
+  background: rgba(248,113,113,.06);
+}
+.action-btn.danger-outline:hover{
+  border-color: var(--red);
+  background: rgba(248,113,113,.14);
+  color: #fff;
+}
+.action-btn:disabled{ opacity: .5; cursor: not-allowed; }
+.action-btn:disabled:hover{ border-color: var(--border); background: var(--bg-panel-soft); color: var(--text); }
+
+/* ===================== Backup folder status ===================== */
+.folder-status{
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: rgba(139,92,246,.05);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.folder-dot{
+  flex-shrink: 0;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.folder-dot.dot-on{ background: var(--green); box-shadow: 0 0 0 4px rgba(52,211,153,.16); }
+.folder-dot.dot-warn{ background: #fbbf24; box-shadow: 0 0 0 4px rgba(251,191,36,.16); }
+.folder-dot.dot-off{ background: var(--text-faint); }
+
+.folder-buttons{ display: flex; flex-wrap: wrap; }
+.folder-buttons .action-btn{ flex: 1 1 auto; min-width: 140px; }
+
+.backup-file-list{
+  margin-top: 12px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+.backup-file-item{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-soft);
+  transition: background .15s;
+}
+.backup-file-item:last-child{ border-bottom: none; }
+.backup-file-item:hover{ background: rgba(139,92,246,.12); }
+.backup-file-name{ font-weight: 600; color: var(--text); }
+.backup-file-date{ color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.backup-file-empty{ padding: 14px 12px; text-align: center; color: var(--text-faint); font-size: 12px; }
 
 .settings-info-list{
   display: flex;
