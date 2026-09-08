@@ -27,6 +27,7 @@
     --brass:#9C7A32;
     --ok:#4C6B4F;
     --danger:#A03B2E;
+    --highlight:#7B5B95;
     --radius:4px;
     --shadow: 0 1px 0 rgba(36,32,24,0.06);
   }
@@ -287,6 +288,73 @@
     color:#fff;
     font-weight:600;
   }
+  .hole-search-box{
+    position:relative;
+    margin:12px 0 16px;
+  }
+  .hole-search-box input{
+    width:100%;
+    font-family:inherit;
+    font-size:14px;
+    padding:10px 14px;
+    border:1.5px solid rgba(255,255,255,0.3);
+    border-radius:6px;
+    background:rgba(255,255,255,0.1);
+    color:#fff;
+    text-align:right;
+    direction:rtl;
+    transition:all .15s ease;
+  }
+  .hole-search-box input::placeholder{
+    color:rgba(255,255,255,0.6);
+  }
+  .hole-search-box input:focus{
+    outline:none;
+    border-color:#fff;
+    background:rgba(255,255,255,0.15);
+  }
+  .hole-search-dropdown{
+    position:absolute;
+    top:100%;
+    right:0;
+    left:0;
+    background:#fff;
+    border:1.5px solid var(--line-strong);
+    border-top:none;
+    border-radius:0 0 6px 6px;
+    list-style:none;
+    margin:0;
+    padding:0;
+    max-height:240px;
+    overflow-y:auto;
+    display:none;
+    z-index:1000;
+  }
+  .hole-search-dropdown.show{
+    display:block;
+  }
+  .hole-search-dropdown li{
+    padding:10px 14px;
+    cursor:pointer;
+    font-size:14px;
+    color:var(--ink);
+    text-align:right;
+    direction:rtl;
+    border-bottom:1px solid var(--line);
+    transition:background .12s ease;
+  }
+  .hole-search-dropdown li:last-child{
+    border-bottom:none;
+  }
+  .hole-search-dropdown li:hover{
+    background:#F8F3E8;
+  }
+  .hole-search-dropdown li .hole-num{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-right:8px;
+  }
+
   .map-legend .dot{
     width:16px;height:16px;
     border-radius:50%;
@@ -441,12 +509,19 @@
 
   <div class="map-panel" id="mapPanel">
     <div class="map-title">نقشهٔ سوراخ‌ها — روی هر سوراخ کلیک کنید</div>
+    
+    <div class="hole-search-box">
+      <input type="text" id="holeHighlightSearch" placeholder="جستجوی نام مشتری برای نشان‌دادن سوراخ...">
+      <ul class="hole-search-dropdown" id="holeSearchDropdown"></ul>
+    </div>
+
     <div class="map-svg-wrap">
       <svg id="holeMapSvg" viewBox="0 0 489 751" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
     <div class="map-legend">
       <span class="item"><span class="dot" style="background:var(--danger);"></span> پر (اشغال)</span>
       <span class="item"><span class="dot" style="background:var(--ok);"></span> خالی</span>
+      <span class="item"><span class="dot" style="background:var(--highlight);"></span> انتخاب‌شده</span>
     </div>
   </div>
 
@@ -537,6 +612,10 @@
   const importFile = document.getElementById("importFile");
   const mapPanel = document.getElementById("mapPanel");
   const holeMapSvg = document.getElementById("holeMapSvg");
+  const holeHighlightSearch = document.getElementById("holeHighlightSearch");
+  const holeSearchDropdown = document.getElementById("holeSearchDropdown");
+
+  let highlightedHole = null;
 
   const persianDigits = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
   function toPersianDigits(str){
@@ -643,6 +722,66 @@
     });
   }
 
+  function clearHighlight(){
+    if (highlightedHole !== null){
+      const circle = holeMapSvg.querySelector(`[data-hole="${highlightedHole}"]`);
+      if (circle){
+        const occupant = records.find(r => String(r.hole) === String(highlightedHole));
+        circle.style.fill = occupant ? "var(--danger)" : "var(--ok)";
+      }
+      highlightedHole = null;
+    }
+  }
+
+  function setHighlight(holeNum){
+    clearHighlight();
+    highlightedHole = holeNum;
+    const circle = holeMapSvg.querySelector(`[data-hole="${holeNum}"]`);
+    if (circle){
+      circle.style.fill = "var(--highlight)";
+    }
+  }
+
+  function updateHoleHighlightDropdown(){
+    const query = holeHighlightSearch.value.trim().toLowerCase();
+    const dropdown = holeSearchDropdown;
+    
+    if (!query){
+      dropdown.innerHTML = "";
+      dropdown.classList.remove("show");
+      clearHighlight();
+      return;
+    }
+
+    const matches = records.filter(r =>
+      r.name.toLowerCase().includes(query)
+    );
+
+    if (matches.length === 0){
+      dropdown.innerHTML = "";
+      dropdown.classList.remove("show");
+      return;
+    }
+
+    dropdown.innerHTML = matches.map(rec => `
+      <li data-hole="${rec.hole}">
+        <span>${rec.name}</span>
+        <span class="hole-num">(سوراخ ${toPersianDigits(rec.hole)})</span>
+      </li>
+    `).join("");
+    
+    dropdown.classList.add("show");
+    
+    dropdown.addEventListener("click", function(e){
+      const li = e.target.closest("li");
+      if (!li) return;
+      const hole = li.getAttribute("data-hole");
+      setHighlight(hole);
+      holeHighlightSearch.value = li.textContent.trim();
+      dropdown.classList.remove("show");
+    }, { once: true });
+  }
+
   function render(){
     const query = searchInput.value.trim().toLowerCase();
     const filtered = query
@@ -729,6 +868,15 @@
   });
 
   searchInput.addEventListener("input", render);
+
+  holeHighlightSearch.addEventListener("input", updateHoleHighlightDropdown);
+  holeHighlightSearch.addEventListener("focus", updateHoleHighlightDropdown);
+  
+  document.addEventListener("click", function(e){
+    if (!e.target.closest(".hole-search-box")){
+      holeSearchDropdown.classList.remove("show");
+    }
+  });
 
   exportBtn.addEventListener("click", function(){
     if (records.length === 0){
