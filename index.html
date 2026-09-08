@@ -226,6 +226,29 @@
     color:var(--ink);
   }
 
+  .toolbar-actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .import-btn{
+    font-family:inherit;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    background:transparent;
+    border:1.5px solid var(--line-strong);
+    border-radius:20px;
+    padding:8px 16px;
+    cursor:pointer;
+    transition: all .15s ease;
+  }
+  .import-btn:hover{
+    border-color:var(--ink);
+    color:var(--ink);
+  }
+
   /* ---------- Table ---------- */
   .table-panel{
     overflow:hidden;
@@ -362,7 +385,11 @@
     <div class="search-box">
       <input type="text" id="searchInput" placeholder="جستجوی نام مشتری یا شماره سوراخ...">
     </div>
-    <button class="export-btn" id="exportBtn">خروجی CSV</button>
+    <div class="toolbar-actions">
+      <button class="import-btn" id="importBtn">آپلود CSV</button>
+      <input type="file" id="importFile" accept=".csv,text/csv" style="display:none;">
+      <button class="export-btn" id="exportBtn">خروجی CSV</button>
+    </div>
   </div>
 
   <div class="panel table-panel">
@@ -422,6 +449,8 @@
   const totalCount = document.getElementById("totalCount");
   const searchInput = document.getElementById("searchInput");
   const exportBtn = document.getElementById("exportBtn");
+  const importBtn = document.getElementById("importBtn");
+  const importFile = document.getElementById("importFile");
 
   const persianDigits = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
   function toPersianDigits(str){
@@ -532,6 +561,117 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  });
+
+  // ---------- آپلود (وارد کردن) CSV ----------
+  function parseCSV(text){
+    // حذف BOM احتمالی ابتدای فایل
+    text = text.replace(/^\uFEFF/, "");
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++){
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes){
+        if (ch === '"' && next === '"'){ field += '"'; i++; }
+        else if (ch === '"'){ inQuotes = false; }
+        else { field += ch; }
+      } else {
+        if (ch === '"'){ inQuotes = true; }
+        else if (ch === ','){ row.push(field); field = ""; }
+        else if (ch === '\r'){ /* نادیده گرفتن */ }
+        else if (ch === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+        else { field += ch; }
+      }
+    }
+    if (field.length > 0 || row.length > 0){ row.push(field); rows.push(row); }
+
+    return rows.filter(r => r.some(cell => String(cell).trim() !== ""));
+  }
+
+  function findColumnIndex(header, keywords){
+    return header.findIndex(h => keywords.some(k => h.toLowerCase().includes(k)));
+  }
+
+  importBtn.addEventListener("click", function(){
+    importFile.click();
+  });
+
+  importFile.addEventListener("change", function(){
+    const file = importFile.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e){
+      let allRows;
+      try{
+        allRows = parseCSV(String(e.target.result));
+      }catch(err){
+        alert("خواندن فایل CSV با خطا مواجه شد.");
+        importFile.value = "";
+        return;
+      }
+
+      if (allRows.length === 0){
+        alert("فایل انتخاب‌شده خالی است.");
+        importFile.value = "";
+        return;
+      }
+
+      // تشخیص سطر عنوان (در صورت وجود)
+      const header = allRows[0].map(h => String(h).trim());
+      let nameIdx = findColumnIndex(header, ["نام", "name"]);
+      let holeIdx = findColumnIndex(header, ["سوراخ", "hole"]);
+      let dataRows;
+
+      if (nameIdx !== -1 && holeIdx !== -1){
+        dataRows = allRows.slice(1);
+      } else {
+        // بدون سطر عنوان مشخص: فرض بر این‌که ستون اول نام و ستون دوم شماره سوراخ است
+        nameIdx = 0;
+        holeIdx = 1;
+        dataRows = allRows;
+      }
+
+      let added = 0, skippedDuplicate = 0, skippedInvalid = 0;
+      const baseTime = Date.now();
+
+      dataRows.forEach((cols, i) => {
+        const name = (cols[nameIdx] || "").toString().trim();
+        const hole = (cols[holeIdx] || "").toString().trim();
+
+        if (!name || hole === ""){ skippedInvalid++; return; }
+
+        const duplicate = records.find(r => String(r.hole) === String(hole));
+        if (duplicate){ skippedDuplicate++; return; }
+
+        records.push({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + i,
+          name: name,
+          hole: hole,
+          createdAt: baseTime - i
+        });
+        added++;
+      });
+
+      saveRecords(records);
+      render();
+      importFile.value = "";
+
+      let msg = `${toPersianDigits(added)} رکورد با موفقیت آپلود شد.`;
+      if (skippedDuplicate > 0) msg += `\n${toPersianDigits(skippedDuplicate)} رکورد به‌دلیل تکراری بودن شماره سوراخ نادیده گرفته شد.`;
+      if (skippedInvalid > 0) msg += `\n${toPersianDigits(skippedInvalid)} سطر نامعتبر بود و نادیده گرفته شد.`;
+      alert(msg);
+    };
+    reader.onerror = function(){
+      alert("خواندن فایل با خطا مواجه شد.");
+      importFile.value = "";
+    };
+    reader.readAsText(file, "utf-8");
   });
 
   render();
