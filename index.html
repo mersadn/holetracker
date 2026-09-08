@@ -669,6 +669,13 @@
 
     if (!name || hole === "") return;
 
+    const holeNum = parseInt(hole, 10);
+    if (isNaN(holeNum) || holeNum < 1 || holeNum > 67){
+      errorMsg.textContent = `شماره سوراخ باید بین 1 تا 67 باشد.`;
+      errorMsg.classList.add("show");
+      return;
+    }
+
     const duplicate = records.find(r => String(r.hole) === String(hole));
     if (duplicate){
       errorMsg.textContent = `شماره سوراخ ${toPersianDigits(hole)} قبلاً برای «${duplicate.name}» ثبت شده است.`;
@@ -804,6 +811,9 @@
         const hole = (cols[holeIdx] || "").toString().trim();
 
         if (!name || hole === ""){ skippedInvalid++; return; }
+
+        const holeNum = parseInt(hole, 10);
+        if (isNaN(holeNum) || holeNum < 1 || holeNum > 67){ skippedInvalid++; return; }
 
         const duplicate = records.find(r => String(r.hole) === String(hole));
         if (duplicate){ skippedDuplicate++; return; }
