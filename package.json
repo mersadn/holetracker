@@ -1,0 +1,12 @@
+{
+  "name": "hole-tracker",
+  "version": "1.0.0",
+  "description": "ثبت نام مشتری و شماره سوراخ با دیتابیس محلی پایدار",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
