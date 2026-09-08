@@ -1,4 +1,8 @@
-const CACHE_NAME = "dtf-tracker-cache-v1";
+// نکته: هر بار که فایل‌های برنامه (index.html/style.css/app.js) تغییر می‌کنند،
+// این نسخه باید افزایش پیدا کند تا سرویس‌ورکر جدید نصب و جایگزین قبلی شود
+// و برنامه بدون نیاز به رفرش دستی توسط کاربر به‌روزرسانی شود (به کمک
+// کد controllerchange در app.js که پس از فعال شدن نسخه جدید صفحه را رفرش می‌کند).
+const CACHE_NAME = "dtf-tracker-cache-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
