@@ -307,12 +307,19 @@
   .hole-circle-text{
     fill:#fff;
     font-family:'Vazirmatn', Tahoma, sans-serif;
-    font-size:16px;
     font-weight:700;
     text-anchor:middle;
     dominant-baseline:middle;
     pointer-events:none;
     font-variant-numeric: tabular-nums;
+  }
+  .hole-number{
+    font-size:16px;
+  }
+  .hole-name{
+    font-size:9px;
+    font-weight:600;
+    opacity:0.9;
   }
 
   /* ---------- Table ---------- */
@@ -578,12 +585,20 @@
 
       const text = document.createElementNS(ns, "text");
       text.setAttribute("x", cx);
-      text.setAttribute("y", cy);
-      text.setAttribute("class", "hole-circle-text");
+      text.setAttribute("y", cy - 8);
+      text.setAttribute("class", "hole-circle-text hole-number");
       text.textContent = toPersianDigits(num);
+
+      const textName = document.createElementNS(ns, "text");
+      textName.setAttribute("x", cx);
+      textName.setAttribute("y", cy + 10);
+      textName.setAttribute("class", "hole-circle-text hole-name");
+      textName.setAttribute("data-hole", num);
+      textName.textContent = "";
 
       holeMapSvg.appendChild(circle);
       holeMapSvg.appendChild(text);
+      holeMapSvg.appendChild(textName);
     });
 
     holeMapSvg.addEventListener("click", function(e){
@@ -611,12 +626,19 @@
       const num = circle.getAttribute("data-hole");
       const occupant = records.find(r => String(r.hole) === String(num));
       const title = circle.querySelector("title");
+      const nameText = holeMapSvg.querySelector(`.hole-name[data-hole="${num}"]`);
+      
       if (occupant){
         circle.style.fill = "var(--danger)";
         title.textContent = `سوراخ ${num} — پر (${occupant.name})`;
+        // اسم رو خیلی کوتاه کن تا بتونه داخل دایره جا شود
+        let displayName = occupant.name;
+        if (displayName.length > 8) displayName = displayName.substring(0, 7) + "…";
+        if (nameText) nameText.textContent = displayName;
       } else {
         circle.style.fill = "var(--ok)";
         title.textContent = `سوراخ ${num} — خالی`;
+        if (nameText) nameText.textContent = "";
       }
     });
   }
