@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1180, initial-scale=1">
+<title>مدیریت سوراخ‌های DTF</title>
+<meta name="description" content="ثبت و پیگیری قرارگیری رول‌های DTF داخل سوراخ‌های دستگاه">
+<meta name="theme-color" content="#1e1930">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="stage">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+          <circle cx="9" cy="9" r="7.5" fill="#34d399"/>
+          <circle cx="21" cy="9" r="7.5" fill="#f87171"/>
+          <circle cx="15" cy="21" r="7.5" fill="#8b5cf6"/>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <h1>سوراخ‌های <span>DTF</span></h1>
+        <p>پیگیری قرارگیری رول‌ها داخل دستگاه</p>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="searchInput" type="text" placeholder="جستجو بر اساس نام مشتری یا شماره سوراخ…" autocomplete="off">
+      <button id="searchClear" class="search-clear" title="پاک کردن جستجو" hidden>✕</button>
+      <div id="searchResults" class="search-results" hidden></div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="btnExport" class="ghost-btn" title="ذخیره نسخه پشتیبان از تمام اطلاعات">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        خروجی دیتابیس
+      </button>
+      <button id="btnImport" class="ghost-btn" title="بازیابی اطلاعات از فایل پشتیبان">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0-4 4m4-4 4 4M4 7V4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v3"/></svg>
+        ورودی دیتابیس
+      </button>
+      <input id="fileImport" type="file" accept="application/json" hidden>
+      <button id="btnInstall" class="install-btn" hidden>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
+        نصب برنامه روی سیستم
+      </button>
+    </div>
+  </header>
+
+  <div class="stat-strip">
+    <div class="stat-chip">
+      <span class="dot dot-total"></span>
+      <span class="stat-num" id="statTotal">۰</span>
+      <span class="stat-label">کل سوراخ‌ها</span>
+    </div>
+    <div class="stat-chip">
+      <span class="dot dot-empty"></span>
+      <span class="stat-num" id="statEmpty">۰</span>
+      <span class="stat-label">خالی</span>
+    </div>
+    <div class="stat-chip">
+      <span class="dot dot-filled"></span>
+      <span class="stat-num" id="statFilled">۰</span>
+      <span class="stat-label">پر شده</span>
+    </div>
+    <div class="stat-chip">
+      <span class="dot dot-progress"></span>
+      <span class="stat-num" id="statPercent">٪۰</span>
+      <span class="stat-label">میزان اشغال</span>
+    </div>
+  </div>
+
+  <main class="board">
+
+    <!-- MAP PANEL -->
+    <section class="panel panel-map">
+      <div class="panel-head">
+        <h2>نقشه سوراخ‌ها</h2>
+        <div class="legend">
+          <span><i class="lg-dot lg-empty"></i>آزاد</span>
+          <span><i class="lg-dot lg-filled"></i>پر</span>
+          <span><i class="lg-dot lg-match"></i>نتیجه جستجو</span>
+        </div>
+      </div>
+      <div class="map-scroll">
+        <div id="holeMap" class="hole-map"></div>
+      </div>
+    </section>
+
+    <!-- LIST PANEL -->
+    <section class="panel panel-list">
+      <div class="panel-head">
+        <h2>لیست ثبت‌شده‌ها</h2>
+        <span class="panel-count" id="listCount">۰ رکورد</span>
+      </div>
+      <div class="list-table-wrap">
+        <table class="list-table">
+          <thead>
+            <tr>
+              <th class="col-idx">ردیف</th>
+              <th class="col-name">نام مشتری</th>
+              <th class="col-hole">سوراخ</th>
+              <th class="col-status">وضعیت</th>
+              <th class="col-date">تاریخ</th>
+              <th class="col-del"></th>
+            </tr>
+          </thead>
+          <tbody id="listBody"></tbody>
+        </table>
+        <div id="listEmpty" class="list-empty-state" hidden>
+          <p>هنوز رکوردی ثبت نشده است.</p>
+          <span>از فرم روبه‌رو یک رکورد جدید اضافه کنید.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FORM PANEL -->
+    <section class="panel panel-form">
+      <div class="panel-head">
+        <h2>افزودن رکورد جدید</h2>
+      </div>
+
+      <form id="addForm" class="add-form">
+        <label class="field">
+          <span class="field-label">نام مشتری</span>
+          <input id="customerName" type="text" placeholder="مثلاً: علی رضایی" autocomplete="off" required>
+        </label>
+
+        <label class="field">
+          <span class="field-label">شماره سوراخ</span>
+          <select id="holeSelect" required>
+            <option value="" disabled selected>انتخاب شماره سوراخ...</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field-label">توضیحات <em>(اختیاری)</em></span>
+          <textarea id="notesInput" rows="4" placeholder="یادداشت..."></textarea>
+        </label>
+
+        <button type="submit" class="submit-btn">افزودن رکورد</button>
+
+        <p class="hint-text">
+          روی هر <b>سوراخ آزاد</b> در نقشه کنار فرم کلیک کنید تا در فرم انتخاب شود.
+          برای <b>تحویل دادن</b>، روی برچسب شماره سوراخ در لیست کلیک کنید؛ با کلیک دوباره،
+          به «در انتظار» برمی‌گردد و سوراخ دوباره آزاد می‌شود.
+        </p>
+      </form>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span>تمام اطلاعات به‌صورت محلی روی همین سیستم ذخیره می‌شود — برای پشتیبان‌گیری از «خروجی دیتابیس» استفاده کنید.</span>
+  </footer>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<div id="confirmModal" class="modal-overlay" hidden>
+  <div class="modal-box">
+    <p id="confirmText"></p>
+    <div class="modal-actions">
+      <button id="confirmCancel" class="ghost-btn">انصراف</button>
+      <button id="confirmOk" class="danger-btn">تایید</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
