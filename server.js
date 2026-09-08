@@ -46,6 +46,8 @@ app.post('/api/records', (req, res) => {
     customerName: String(customerName).trim(),
     holeNumber: String(holeNumber).trim(),
     note: note ? String(note).trim() : '',
+    delivered: false,
+    deliveredAt: null,
     createdAt: new Date().toISOString(),
   };
   db.records.push(newRecord);
@@ -53,19 +55,26 @@ app.post('/api/records', (req, res) => {
   res.status(201).json(newRecord);
 });
 
-// ویرایش رکورد
+// ویرایش رکورد (شامل تغییر وضعیت تحویل)
 app.put('/api/records/:id', (req, res) => {
   const id = Number(req.params.id);
-  const { customerName, holeNumber, note } = req.body;
+  const { customerName, holeNumber, note, delivered } = req.body;
   const db = readDB();
   const idx = db.records.findIndex(r => r.id === id);
   if (idx === -1) return res.status(404).json({ error: 'رکورد پیدا نشد' });
 
+  const current = db.records[idx];
+  const nextDelivered = typeof delivered === 'boolean' ? delivered : current.delivered;
+
   db.records[idx] = {
-    ...db.records[idx],
-    customerName: customerName ?? db.records[idx].customerName,
-    holeNumber: holeNumber ?? db.records[idx].holeNumber,
-    note: note ?? db.records[idx].note,
+    ...current,
+    customerName: customerName ?? current.customerName,
+    holeNumber: holeNumber ?? current.holeNumber,
+    note: note ?? current.note,
+    delivered: nextDelivered,
+    deliveredAt: nextDelivered !== current.delivered
+      ? (nextDelivered ? new Date().toISOString() : null)
+      : current.deliveredAt,
   };
   writeDB(db);
   res.json(db.records[idx]);
